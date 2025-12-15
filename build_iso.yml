@@ -1,0 +1,179 @@
+---
+- name: Build Edge AAP OS Image and Deployment ISO
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - main.yml
+    - ansible_playbooks/vars/default.yml
+
+  tasks:
+    - name: Set bootc OS version for image
+      ansible.builtin.set_fact:
+        _bootc_os_version: "{{ (rhel_iso_version | string | split('.'))[0] }}"
+
+    - name: Ensure OS Dependencies are installed
+      ansible.builtin.package:
+        name:
+          - podman
+          - lorax
+          - tar
+          - gzip
+        state: present
+      become: true
+
+    - name: Download AAP containerized setup bundle
+      ansible.builtin.include_role:
+        name: infra.aap_utilities.aap_setup_download
+      vars:
+        aap_setup_down_version: "{{ (aap_version | string | split('-'))[0] }}"
+        aap_setup_down_version_patch: "{{ (aap_version | string | split('-'))[1] | default(false, true) }}"
+        aap_setup_down_dest_dir: iso_files/additional_files
+        aap_setup_down_type: setup-bundle
+        aap_setup_rhel_version: "{{ (rhel_iso_version | string | split('.'))[0] }}"
+        aap_setup_containerized: true
+        aap_setup_arch: x86_64
+        aap_setup_down_offline_token: "{{ redhat_offline_token }}"
+
+    - name: Download RHEL images
+      ansible.builtin.include_role:
+        name: rhel_download
+      vars:
+        rhel_download_image_version: "{{ rhel_iso_version | string }}"
+        rhel_download_arch: x86_64
+        rhel_download_type: boot
+        rhel_download_dest_dir: iso_files
+        rhel_download_offline_token: "{{ redhat_offline_token }}"
+
+    - name: Write sudoers.d/maint template
+      ansible.builtin.template:
+        src: maint.j2
+        dest: build/sudoers.d/maint
+        mode: '0640'
+
+    - name: Pull latest Bootc Base Image
+      containers.podman.podman_image:
+        name: "registry.redhat.io/rhel{{ _bootc_os_version }}/rhel-bootc"
+        tag: latest
+        username: "{{ registry_username }}"
+        password: "{{ registry_password }}"
+        force: true
+
+    - name: Build the AAP OS Image
+      containers.podman.podman_image:
+        name: "{{ aap_os_image_name }}:{{ aap_os_image_version | string }}"
+        build:
+          container_file: |-
+            FROM registry.redhat.io/rhel{{ _bootc_os_version }}/rhel-bootc:latest
+
+            USER root
+
+            # Install Required Packages
+            RUN dnf \
+                --enablerepo=rhel-{{ _bootc_os_version }}-for-x86_64-baseos-rpms \
+                --enablerepo=rhel-{{ _bootc_os_version }}-for-x86_64-appstream-rpms \
+                install -y \
+                ansible-core \
+                rhel-system-roles \
+                wget \
+                git-core \
+                rsync \
+                vim \
+                tree \
+                firewalld \
+                crun \
+                podman \
+                slirp4netns \
+                fuse-overlayfs \
+                python3-cryptography \
+                python3-psycopg2 \
+                python3-firewall \
+                && dnf clean all \
+                && rm -rf /var/{cache,log} /var/lib/{dnf,rhsm}
+
+            RUN mkdir -p /etc/systemd/system/kdump.service.d \
+                /var/opt/aap_files \
+                /var/opt/aap_config
+            COPY sudoers.d/* /etc/sudoers.d
+            COPY override.conf /etc/systemd/system/kdump.service.d
+
+          force_rm: true
+        path: build
+        force: true
+
+    - name: Recursively remove previous container directory
+      ansible.builtin.file:
+        path: container
+        state: absent
+
+    - name: Create clean container directory
+      ansible.builtin.file:
+        path: container
+        state: directory
+        mode: '0750'
+
+    - name: Save OS image as oci-dir
+      containers.podman.podman_save:
+        image: "{{ aap_os_image_name }}:{{ aap_os_image_version | string }}"
+        dest: container
+        format: oci-dir
+        force: true
+
+    - name: Save OS image as oci-archive
+      containers.podman.podman_save:
+        image: "{{ aap_os_image_name }}:{{ aap_os_image_version | string }}"
+        dest: "{{ aap_os_image_name }}-{{ aap_os_image_version | string }}.tar"
+        format: oci-archive
+        force: true
+
+    - name: Compress OS image oci-archive
+      community.general.archive:
+        path: "{{ aap_os_image_name }}-{{ aap_os_image_version | string }}.tar"
+        dest: "{{ aap_os_image_name }}-{{ aap_os_image_version | string }}.tar.gz"
+        mode: '0640'
+        format: gz
+
+    - name: Remove OS image oci-archive uncompressed
+      ansible.builtin.file:
+        path: "{{ aap_os_image_name }}-{{ aap_os_image_version | string }}.tar"
+        state: absent
+
+    - name: Remove previous Playbook tar file
+      ansible.builtin.file:
+        path: iso_files/additional_files/ansible_playbooks.tgz
+        state: absent
+
+    - name: Create ansible_playbooks.tgz file
+      community.general.archive:
+        path: ansible_playbooks
+        dest: iso_files/additional_files/ansible_playbooks.tgz
+        mode: '0640'
+
+    - name: Write Kickstart Template
+      ansible.builtin.template:
+        src: local.ks.j2
+        dest: iso_files/local.ks
+        mode: '0640'
+
+    - name: Write run_config.bash Template
+      ansible.builtin.template:
+        src: run_config.bash.j2
+        dest: iso_files/additional_files/run_config.bash
+        mode: '0750'
+
+    - name: Create AAP OS Image Deployment ISO # noqa: no-changed-when
+      ansible.builtin.shell:
+        cmd: |
+          mkksiso \
+          --ks iso_files/local.ks \
+          --add container/ \
+          --add iso_files/additional_files \
+          --cmdline "console=tty0 console=ttyS0,115200n8" \
+          --rm-args "quiet" \
+          iso_files/rhel-{{ rhel_iso_version | string }}-x86_64-boot.iso \
+          {{ aap_os_image_name }}-{{ aap_os_image_version | string }}.iso
+
+    - name: Recursively remove container directory after successful iso build
+      ansible.builtin.file:
+        path: container
+        state: absent
+...

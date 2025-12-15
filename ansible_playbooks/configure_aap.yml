@@ -1,0 +1,151 @@
+---
+- name: Configure Unmanaged AAP
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - /var/opt/aap_config/customer_vars.yml
+    - default.yml
+
+  tasks:
+    - name: Configure Network
+      become: true
+      block:
+        - name: Set Hostname
+          ansible.builtin.hostname:
+            name: "{{ aap_fqdn }}"
+
+        - name: Configure Network
+          ansible.builtin.import_role:
+            name: redhat.rhel_system_roles.network
+          vars:
+            network_connections:
+              - name: "{{ local_connection_name }}"
+                type: ethernet
+                ip:
+                  dhcp4: false
+                  gateway4: "{{ gateway }}"
+                  dns: "{{ dns_servers }}"
+                  dns_search:
+                    - "{{ domain }}"
+                  address:
+                    - "{{ address }}"
+                state: up
+
+        - name: Create /etc/hosts entry for AAP
+          ansible.builtin.lineinfile:
+            path: /etc/hosts
+            regexp: " {{ aap_fqdn }}$"
+            line: "{{ (address | split('/'))[0] }} {{ aap_fqdn }}"
+
+        - name: Configure chrony configuration
+          ansible.builtin.template:
+            src: chrony.conf.j2
+            dest: /etc/chrony.conf
+            owner: root
+            group: root
+            mode: '0644'
+            backup: true
+
+        - name: Restart chronyd.service
+          ansible.builtin.systemd:
+            name: chronyd
+            state: restarted
+
+        - name: Validate User linger is enabled
+          ansible.builtin.stat:
+            path: "/var/lib/systemd/linger/{{ aap_user }}"
+          register: user_linger_file
+
+        - name: Ensure linger is enabled for the user # noqa: no-changed-when
+          ansible.builtin.command:
+            cmd: "loginctl enable-linger {{ aap_user }}"
+          when: not user_linger_file.stat.exists
+
+    - name: Install AAP
+      block:
+        - name: Check to see if AAP is already installed
+          ansible.builtin.stat:
+            path: "/home/{{ aap_user }}/.config/systemd/user/automation-controller-web.service"
+          register: automation_controller_service
+
+        - name: Ensure the AAP service is running
+          ansible.builtin.systemd:
+            name: automation-controller-web
+            state: started
+            scope: user
+          when: automation_controller_service.stat.exists is true
+
+        - name: When AAP is not installed
+          when: automation_controller_service.stat.exists is false
+          block:
+            - name: Copy ansible.cfg
+              ansible.builtin.template:
+                src: ansible.cfg.j2
+                dest: "{{ aap_installer_dir }}ansible.cfg"
+                owner: "{{ aap_user }}"
+                group: "{{ aap_user }}"
+                mode: "0644"
+
+            - name: Copy manifest.zip
+              ansible.builtin.copy:
+                src: /var/opt/aap_config/manifest.zip
+                dest: "{{ aap_installer_dir }}"
+                owner: "{{ aap_user }}"
+                group: "{{ aap_user }}"
+                mode: "0644"
+
+            - name: Copy secret file
+              ansible.builtin.template:
+                src: secret.j2
+                dest: "/var/home/{{ aap_user }}/.secret"
+                owner: "{{ aap_user }}"
+                group: "{{ aap_user }}"
+                mode: "0600"
+
+            - name: Encrypt admin key # noqa: command-instead-of-shell no-changed-when
+              ansible.builtin.shell:
+                cmd: "ansible-vault encrypt_string --vault-password-file /var/home/{{ aap_user }}/.secret --encrypt-vault-id default {{ aap_password }}"
+              register: admin_vault_pass
+
+            - name: Encrypt pg key # noqa: command-instead-of-shell no-changed-when
+              ansible.builtin.shell:
+                cmd: "ansible-vault encrypt_string --vault-password-file /var/home/{{ aap_user }}/.secret --encrypt-vault-id default {{ database_password }}"
+              register: pg_vault_pass
+
+            - name: Template a file # noqa: risky-file-permissions
+              ansible.builtin.template:
+                src: inventory.yml.j2
+                dest: "{{ aap_installer_dir }}inventory.yml"
+
+            - name: Check the hostname # noqa: no-changed-when
+              ansible.builtin.command:
+                cmd: hostname
+              register: hostname_output
+
+            - name: Fail if hostname is localhost
+              ansible.builtin.fail:
+                msg: AAP installer does not allow hostname to be localhost
+              when: '"localhost" in hostname_output.stdout'
+
+            - name: Run AAP installer # noqa: command-instead-of-shell
+              ansible.builtin.shell:
+                cmd: /usr/bin/ansible-playbook -i inventory.yml ansible.containerized_installer.install -e images_tmp_dir=/var/tmp
+                chdir: "{{ aap_installer_dir }}"
+              async: "{{ ansible_check_mode | ternary(0, ansible_installer_timeout) }}"  # avoid connection timeouts
+              changed_when: false  # async always returns changed, check in async_status instead
+              poll: 0
+              register: async_results
+
+            - name: Check async status for AAP installer
+              ansible.builtin.async_status:
+                jid: "{{ async_results.ansible_job_id }}"
+              register: async_poll_results
+              until: async_poll_results.finished
+              changed_when: async_poll_results.rc is defined and async_poll_results.rc == 2
+              failed_when:
+                - (not async_poll_results.finished) or (async_poll_results.rc is defined and async_poll_results.rc not in [0, 2])
+              retries: "{{ ((ansible_installer_timeout | int) / 5) | round | int }}"
+              delay: 5
+              when:
+                - not ansible_check_mode
+...

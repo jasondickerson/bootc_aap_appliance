@@ -1,0 +1,39 @@
+all:
+  children:
+    automationcontroller:
+      hosts:
+        {{ aap_fqdn }}: {}
+    automationhub:
+      hosts:
+        {{ aap_fqdn }}: {}
+    automationeda:
+      hosts:
+        {{ aap_fqdn }}: {}
+    automationgateway:
+      hosts:
+        {{ aap_fqdn }}: {}
+    database:
+      hosts:
+        {{ aap_fqdn }}: {}
+    ungrouped: {}
+  vars:
+    ansible_connection: local
+    bundle_dir: {{ aap_installer_dir }}bundle
+    bundle_install: 'true'
+    controller_admin_password: {{ admin_vault_pass.stdout }}
+    controller_license_file: {{ aap_installer_dir }}manifest.zip
+    controller_pg_host: {{ aap_fqdn }}
+    controller_pg_password: {{ pg_vault_pass.stdout }}
+    hub_admin_password: {{ admin_vault_pass.stdout }}
+    hub_pg_host: {{ aap_fqdn }}
+    hub_pg_password: {{ pg_vault_pass.stdout }}
+    hub_seed_collections: false
+    eda_admin_password: {{ admin_vault_pass.stdout }}
+    eda_pg_host: {{ aap_fqdn }}
+    eda_pg_password: {{ pg_vault_pass.stdout }}
+    gateway_admin_password: {{ admin_vault_pass.stdout }}
+    gateway_pg_host: {{ aap_fqdn }}
+    gateway_pg_password: {{ pg_vault_pass.stdout }}
+    postgresql_admin_password: {{ pg_vault_pass.stdout }}
+    postgresql_admin_username: postgres
+    redis_mode: standalone

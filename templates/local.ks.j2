@@ -1,0 +1,36 @@
+text
+network --bootproto=dhcp --activate
+clearpart --all --initlabel --disklabel=gpt
+ignoredisk --only-use={{ os_disk }}
+reqpart --add-boot
+part / --grow --fstype xfs
+ostreecontainer --url=/run/install/repo/container --transport=oci --no-signature-verification
+services --enabled=sshd
+group --name='{{ aap_user }}' --gid=1000
+user --name='{{ aap_user }}' --groups=wheel --password='{{ password_hashes[aap_user] }}' --iscrypted --uid=1000 --gid=1000
+group --name='maint' --gid=1001
+user --name='maint' --password='changeme' --plaintext --uid=1001 --gid=1001
+rootpw --iscrypted --lock '{{ password_hashes.root }}'
+reboot
+%post --nochroot
+tar xvzf /run/install/repo/additional_files/ansible-automation-platform-containerized-setup-bundle-{{ aap_version }}-x86_64.tar.gz -C /mnt/sysroot/var/opt
+tar xvzf /run/install/repo/additional_files/ansible_playbooks.tgz -C /mnt/sysroot/var/home/{{ aap_user }}
+cp -r /run/install/repo/additional_files/aap_files /mnt/sysroot/var/opt
+cp /run/install/repo/additional_files/customer_vars.yml /mnt/sysroot/var/opt/aap_config
+cp /run/install/repo/additional_files/run_config.bash /mnt/sysroot/var/opt
+%end
+%post
+chown -R {{ aap_user }}: /var/opt/ansible-automation-platform-containerized-setup-bundle-{{ aap_version }}-x86_64
+chown -R {{ aap_user }}: /var/home/{{ aap_user }}
+chown root: /etc/sudoers.d/*
+chmod 400 /etc/sudoers.d/*
+chown -R root: /etc/systemd/system/kdump.service.d
+chmod 644 /etc/systemd/system/kdump.service.d/override.conf
+chown -R {{ aap_user }}: /var/opt/aap_files
+chmod 640 /var/opt/aap_files/*
+chown -R maint: /var/opt/aap_config
+chmod 644 /var/opt/aap_config/customer_vars.yml
+chown {{ aap_user }}: /var/opt/run_config.bash
+chmod 750 /var/opt/run_config.bash
+systemctl set-default multi-user.target
+%end

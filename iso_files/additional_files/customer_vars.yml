@@ -1,0 +1,25 @@
+---
+## Network Variables
+local_connection_name: enp1s0
+
+hostname: aap-apln
+
+# yaml list of dns servers
+dns_servers:
+  - 192.168.122.1
+  - 8.8.8.8
+
+domain: "example.com"
+address: 192.168.122.125/24
+gateway: 192.168.122.1
+time_server_list:
+  - 0.rhel.pool.ntp.org
+  - 1.rhel.pool.ntp.org
+  - 2.rhel.pool.ntp.org
+  - 3.rhel.pool.ntp.org
+
+## AAP Installation Variables
+aap_password: changeme
+database_password: changeme
+vault_password_string: changeme
+...

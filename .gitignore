@@ -1,0 +1,13 @@
+.ansible
+.vscode
+# ignore your image files
+aap_edge-*
+# ignore downloads
+iso_files/additional_files/ansible-automation-platform-containerized-setup-bundle-*-x86_64.tar.gz
+iso_files/rhel-*-x86_64-boot.iso
+# ignore templated files
+build/sudoers.d/maint
+iso_files/additional_files/run_config.bash
+iso_files/local.ks
+# ignore deployment playbook archive
+iso_files/additional_files/ansible_playbooks.tgz

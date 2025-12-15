@@ -1,0 +1,14 @@
+---
+# From https://access.redhat.com/management/api
+redhat_offline_token: ''
+# From: https://access.redhat.com/terms-based-registry/accounts
+registry_username: ''
+registry_password: ''
+aap_os_image_name: aap_edge
+aap_os_image_version: "1.0"
+rhel_iso_version: "9.6"
+os_disk: vda
+password_hashes:
+  ansible: '$6$rounds=100000$ZywuBVmjYEYUSEAr$BvikY3M3DwgUD3DYwPJkxg2BpMrirp7QhO1SbLVzwtS4rNgM2YwOjtrDinbn/DQV8NwMtWg7D.o/PgITincpE1'
+  root: '$6$rounds=100000$ZywuBVmjYEYUSEAr$BvikY3M3DwgUD3DYwPJkxg2BpMrirp7QhO1SbLVzwtS4rNgM2YwOjtrDinbn/DQV8NwMtWg7D.o/PgITincpE1'
+...
