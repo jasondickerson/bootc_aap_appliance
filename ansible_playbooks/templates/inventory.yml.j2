@@ -12,12 +12,23 @@ all:
     automationgateway:
       hosts:
         {{ aap_fqdn }}: {}
+{% if (aap_version | split('-'))[0] | float > 2.6  %}
+    automationmetrics:
+      hosts:
+        {{ aap_fqdn }}: {}
+{% endif %}
     database:
       hosts:
         {{ aap_fqdn }}: {}
     ungrouped: {}
   vars:
     ansible_connection: local
+{% if (aap_version | split('-'))[0] | float > 2.6  %}
+    automationmetrics_controller_read_pg_host: {{ aap_fqdn }}
+    automationmetrics_controller_read_pg_password: {{ pg_vault_pass.stdout }}
+    automationmetrics_pg_host: {{ aap_fqdn }}
+    automationmetrics_pg_password: {{ pg_vault_pass.stdout }}
+{% endif %}
     bundle_dir: {{ aap_installer_dir }}bundle
     bundle_install: 'true'
     controller_admin_password: {{ admin_vault_pass.stdout }}
