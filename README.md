@@ -2,7 +2,7 @@
 
 ## Description
 
-This repository is an example of how to Create an AAP 2.5 containerized Edge Appliance.  The OS is RHEL 9 image mode and the OS images are maintained as Containers.  The current OS version is RHEL 9.6, but this also works for RHEL 10.0.  The current AAP version is Containerized 2.5-18.  The included playbooks deploy a Growth Topology or All in One AAP; however this configuration can be used to deploy other topologies by manually configuring an inventory and configuring SSH keys.  
+This repository is an example of how to create an AAP containerized RHEL Image Mode Appliance.  The OS is RHEL 9 or 10, and the OS images are maintained as Containers.  The current OS version is RHEL 9.6, but this also works for RHEL 10.2.  The AAP version can be Containerized 2.5 - 2.7.  The included playbooks deploy a Growth Topology or All in One AAP; however this configuration can be used to deploy other topologies by manually configuring an inventory and configuring SSH keys.  
 
 ## Build your own OS image and provisioning ISO
 
