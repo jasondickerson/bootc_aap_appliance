@@ -87,6 +87,10 @@
                 python3-cryptography \
                 python3-psycopg2 \
                 python3-firewall \
+                nfs-utils \
+                polkit \
+                sos \
+                gzip \
                 && dnf clean all \
                 && rm -rf /var/{cache,log} /var/lib/{dnf,rhsm}
 
